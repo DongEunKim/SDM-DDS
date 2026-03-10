@@ -31,7 +31,7 @@ except ImportError:
         server_guid: str = ""
 
 REGISTRY_TOPIC = "RPC/ServiceRegistry"
-REGISTRY_CHECK_WAIT_SEC = 2.0
+REGISTRY_CHECK_WAIT_SEC = 3.0
 
 
 def _copy_header_to_reply(
@@ -71,7 +71,7 @@ def _check_duplicate_instance(
         server_guid=server_guid,
     )
     reg_writer.write(entry)
-    time.sleep(0.5)
+    time.sleep(1.0)
 
     guids_for_key: set[str] = set()
     for sample in reg_reader.take(N=100):
