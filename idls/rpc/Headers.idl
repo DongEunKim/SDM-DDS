@@ -1,0 +1,42 @@
+/*
+ * RPC 공통 헤더 및 상수
+ * RequestHeader, ReplyHeader - DDS-RPC 요청-응답 상관(correlation)에 사용
+ */
+
+#ifndef __rpc__Headers__idl
+#define __rpc__Headers__idl
+
+module rpc {
+
+enum RemoteExceptionCode {
+    REMOTE_EX_OK,
+    REMOTE_EX_UNSUPPORTED,
+    REMOTE_EX_INVALID_ARGUMENT,
+    REMOTE_EX_OUT_OF_RESOURCES,
+    REMOTE_EX_UNKNOWN_OPERATION,
+    REMOTE_EX_UNKNOWN_EXCEPTION
+};
+
+/** 요청 식별자 (UUID 문자열, 36자) */
+typedef string<36> RequestId;
+
+/** 서비스 인스턴스 이름 (선택, 빈 문자열 가능) */
+typedef string<255> InstanceName;
+
+@nested
+struct RequestHeader {
+    RequestId request_id;
+    InstanceName instance_name;
+};
+
+@nested
+struct ReplyHeader {
+    RequestId related_request_id;
+    RemoteExceptionCode remote_ex;
+    /** 응답한 서버 인스턴스명 (비어 있으면 인스턴스 미지정 서버) */
+    InstanceName server_instance;
+};
+
+};  // module rpc
+
+#endif  // __rpc__Headers__idl

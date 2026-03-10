@@ -1,0 +1,36 @@
+/*
+ * Add 서비스 예제
+ * a + b = sum 을 계산하는 RPC 서비스
+ */
+
+#ifndef __services__AddService__idl
+#define __services__AddService__idl
+
+#include "rpc/Headers.idl"
+
+module services {
+
+@nested
+struct Add_In {
+    long a;
+    long b;
+};
+
+@nested
+struct Add_Out {
+    long sum;
+};
+
+struct Add_Request {
+    rpc::RequestHeader header;
+    Add_In data;
+};
+
+struct Add_Reply {
+    rpc::ReplyHeader header;
+    Add_Out data;
+};
+
+};  // module services
+
+#endif  // __services__AddService__idl

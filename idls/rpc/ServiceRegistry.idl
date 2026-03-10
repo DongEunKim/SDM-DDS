@@ -1,0 +1,26 @@
+/*
+ * RPC 서비스 레지스트리
+ * 서버가 자신의 등록 정보를 발행, 클라이언트가 서버 목록 조회
+ * 중복 인스턴스 검출에 사용
+ */
+
+#ifndef __rpc__ServiceRegistry__idl
+#define __rpc__ServiceRegistry__idl
+
+#include "rpc/Headers.idl"
+
+module rpc {
+
+/** 서버 고유 식별자 (UUID) */
+typedef string<36> ServerGuid;
+
+/** 서비스 레지스트리 항목 (토픽: RPC/ServiceRegistry) */
+struct ServiceRegistryEntry {
+    string service_name;
+    InstanceName instance_name;
+    ServerGuid server_guid;
+};
+
+};  // module rpc
+
+#endif  // __rpc__ServiceRegistry__idl

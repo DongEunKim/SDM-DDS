@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sdm-dds-rpc"
+version = "0.1.0"
+description = "DDS 기반 RPC 요청-응답 패턴 SDK"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "cyclonedds",
+    "sdm-dds-idls",
+]
+
+[project.optional-dependencies]
+dev = []
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sdm_dds_rpc"]

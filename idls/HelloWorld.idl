@@ -1,0 +1,14 @@
+// HelloWorld.idl
+// DDS Pub/Sub 예제용 메시지 타입 정의
+
+#include "std_msgs/msg/Header.idl"
+
+module hello_msgs {
+
+struct HelloWorld {
+    std_msgs::msg::Header header;
+    string msg;
+    long count;
+};
+
+};

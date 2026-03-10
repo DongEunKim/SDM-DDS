@@ -1,0 +1,5 @@
+# Cyclone DDS (Python API) - CYCLONEDDS_HOME 필요 (aarch64)
+cyclonedds>=0.10.5
+
+# IDL 기반 메시지 패키지 (idl_to_py.sh 실행 후)
+-e ./idls

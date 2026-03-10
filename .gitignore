@@ -1,0 +1,16 @@
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Cyclone DDS 빌드 (소스는 유지, 빌드 산출물만 제외)
+cyclonedds/build/
+cyclonedds/install/
+
+# idlc 생성 코드 (idls/build/)
+idls/build/
