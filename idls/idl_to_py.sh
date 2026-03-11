@@ -5,7 +5,7 @@
 # - 순환 참조/해당 없는 include 시 오류 출력
 #
 # 사용법:
-#   ./idl_to_py.sh              # idls/ 변환 + pip install -e . 자동 실행
+#   ./idl_to_py.sh              # idls/ 변환 + pip install -e . (통합 패키지) 자동 실행
 #   ./idl_to_py.sh <IDL_DIR>    # 지정 폴더 변환 + pip 설치
 #
 # 출력: idls/build/
@@ -190,9 +190,11 @@ fi
 
 # idlc -o build 는 Python 출력에 적용되지 않음. 생성된 패키지를 build/로 이동
 # idlc가 IDL module에 따라 디렉터리 생성 (sensor_msgs, std_msgs 등) → __init__.py 있는 하위 디렉터리 기준
+# sdm_dds_rpc는 SDK(sdk/rpc)에 있으므로 idls/ 이동 대상에서 제외
 for d in "${IDL_DIR}"/*/; do
     pkg=$(basename "$d")
     [[ "$pkg" == "build" ]] && continue
+    [[ "$pkg" == "sdm_dds_rpc" ]] && continue
     if [[ -f "${d}__init__.py" ]]; then
         mv "$d" "${BUILD_DIR}/"
     fi
@@ -206,13 +208,24 @@ while IFS= read -r -d '' f; do
     mv "$f" "$dest"
 done < <(find "${BUILD_DIR}" -name "*.idl" -print0 2>/dev/null)
 
+# RPC 서비스 네임스페이스 후처리 (Add.Request, Add.Reply 등)
+if python3 "${SCRIPT_DIR}/add_service_namespaces.py" "${BUILD_DIR}"; then
+    :
+fi
+
+# rpc: build 출력을 idls/rpc에 복사 (IDL과 Python이 idls/rpc에 함께 위치)
+if [[ -d "${BUILD_DIR}/rpc" ]]; then
+    cp -f "${BUILD_DIR}"/rpc/*.py "${IDL_DIR}/rpc/"
+    echo "  [후처리] rpc Python -> idls/rpc/"
+fi
+
 echo ""
 echo "완료. 출력: ${BUILD_DIR}"
 
-# 패키지 설치 (pip install -e .)
+# 통합 패키지 설치 (pip install -e . 한 번에 sdk + idlc 출력 포함)
 echo "패키지 설치 중..."
-if python3 -m pip install -e "${IDL_DIR}"; then
-    echo "패키지 설치 완료: sdm-dds-idls"
+if python3 -m pip install -e "${PROJECT_ROOT}"; then
+    echo "패키지 설치 완료: sdm-dds-rpc (sdk + idls 통합)"
 else
-    echo "패키지 설치 실패. 수동: cd ${IDL_DIR} && pip install -e ." >&2
+    echo "패키지 설치 실패. 수동: pip install -e ." >&2
 fi

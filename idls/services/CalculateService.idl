@@ -1,0 +1,39 @@
+/*
+ * Calculate 서비스
+ * op에 따라 a, b를 연산하여 결과 반환
+ * op: "add" | "sub" | "mul"
+ */
+
+#ifndef __services__CalculateService__idl
+#define __services__CalculateService__idl
+
+#include "rpc/Headers.idl"
+
+module services {
+
+@nested
+struct Calculate_In {
+    string<32> op;   // "add", "sub", "mul"
+    long a;
+    long b;
+};
+
+@nested
+struct Calculate_Out {
+    long result;
+    string<64> message;  // "10 + 20 = 30" 등
+};
+
+struct Calculate_Request {
+    rpc::RequestHeader header;
+    Calculate_In data;
+};
+
+struct Calculate_Reply {
+    rpc::ReplyHeader header;
+    Calculate_Out data;
+};
+
+};  // module services
+
+#endif  // __services__CalculateService__idl

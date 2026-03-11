@@ -14,3 +14,10 @@ cyclonedds/install/
 
 # idlc 생성 코드 (idls/build/)
 idls/build/
+
+# 프로젝트 루트에 잘못 생성된 idlc 산출물 (idlc를 idls/ 외부에서 실행한 경우)
+# 주의: rpc/는 sdm-dds-rpc 패키지에 포함되므로 제외하지 않음
+/services/
+/hello_msgs/
+/sensor_msgs/
+/std_msgs/

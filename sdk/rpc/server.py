@@ -12,7 +12,15 @@ from cyclonedds.domain import DomainParticipant
 from cyclonedds.topic import Topic
 from cyclonedds.pub import DataWriter
 from cyclonedds.sub import DataReader
-from cyclonedds.core import ReadCondition, SampleState, ViewState, InstanceState, WaitSet
+from cyclonedds.qos import Qos, Policy
+from cyclonedds.core import (
+    ReadCondition,
+    SampleState,
+    ViewState,
+    InstanceState,
+    WaitSet,
+    DDSStatus,
+)
 from cyclonedds.util import duration
 
 from sdm_dds_rpc.exceptions import RPCRemoteError, RPCDuplicateInstanceError
@@ -32,6 +40,12 @@ except ImportError:
 
 REGISTRY_TOPIC = "RPC/ServiceRegistry"
 REGISTRY_CHECK_WAIT_SEC = 3.0
+
+# 레지스트리: Volatile - 서버 종료 시 항목 제거, 하트비트로 동작 중인 서버만 노출
+_REGISTRY_QOS = Qos(
+    Policy.Durability.Volatile,
+    Policy.History.KeepLast(depth=10),
+)
 
 
 def _copy_header_to_reply(
@@ -58,12 +72,18 @@ def _check_duplicate_instance(
 ) -> None:
     """동일 (service_name, instance_name) 등록 여부 확인. 중복 시 RPCDuplicateInstanceError."""
     reg_topic = Topic(
-        participant, REGISTRY_TOPIC, ServiceRegistryEntry
+        participant, REGISTRY_TOPIC, ServiceRegistryEntry, qos=_REGISTRY_QOS.topic()
     )
-    reg_reader = DataReader(participant, reg_topic)
-    reg_writer = DataWriter(participant, reg_topic)
+    reg_reader = DataReader(participant, reg_topic, qos=_REGISTRY_QOS.datareader())
+    reg_reader.set_status_mask(DDSStatus.SubscriptionMatched)
+    reg_writer = DataWriter(participant, reg_topic, qos=_REGISTRY_QOS.datawriter())
 
-    time.sleep(REGISTRY_CHECK_WAIT_SEC)
+    ws = WaitSet(participant)
+    ws.attach(reg_reader)
+    try:
+        ws.wait(duration(seconds=REGISTRY_CHECK_WAIT_SEC))
+    finally:
+        ws.detach(reg_reader)
 
     entry = ServiceRegistryEntry(
         service_name=service_name,
@@ -71,9 +91,9 @@ def _check_duplicate_instance(
         server_guid=server_guid,
     )
     reg_writer.write(entry)
-    time.sleep(1.0)
+    time.sleep(1.5)
 
-    guids_for_key: set[str] = set()
+    other_guid_seen = False
     for sample in reg_reader.take(N=100):
         if (
             hasattr(sample, "service_name")
@@ -81,10 +101,12 @@ def _check_duplicate_instance(
             and hasattr(sample, "instance_name")
             and str(sample.instance_name).strip() == instance_name
         ):
-            g = getattr(sample, "server_guid", "") or ""
-            guids_for_key.add(str(g).strip())
+            g = str(getattr(sample, "server_guid", "") or "").strip()
+            if g != server_guid:
+                other_guid_seen = True
+                break
 
-    if len(guids_for_key) > 1:
+    if other_guid_seen:
         raise RPCDuplicateInstanceError(
             f"서비스 '{service_name}' 인스턴스 '{instance_name}'이(가) 이미 등록되어 있습니다."
         )
@@ -118,7 +140,7 @@ class RpcServer:
             ],
         ] = {}
         self._running = False
-        self._registry_writers: list[DataWriter] = []
+        self._registry_entries: list[tuple[DataWriter, ServiceRegistryEntry]] = []
         self._heartbeat_stop = threading.Event()
 
     def register_service(
@@ -152,16 +174,16 @@ class RpcServer:
                 self._participant, name, inst, server_guid
             )
             reg_topic = Topic(
-                self._participant, REGISTRY_TOPIC, ServiceRegistryEntry
+                self._participant, REGISTRY_TOPIC, ServiceRegistryEntry, qos=_REGISTRY_QOS.topic()
             )
-            reg_writer = DataWriter(self._participant, reg_topic)
+            reg_writer = DataWriter(self._participant, reg_topic, qos=_REGISTRY_QOS.datawriter())
             entry = ServiceRegistryEntry(
                 service_name=name,
                 instance_name=inst,
                 server_guid=server_guid,
             )
             reg_writer.write(entry)
-            self._registry_writers.append(reg_writer)
+            self._registry_entries.append((reg_writer, entry))
 
         req_topic_name = f"{name}/Request"
         rep_topic_name = f"{name}/Reply"
@@ -183,18 +205,20 @@ class RpcServer:
         )
 
     def _heartbeat_loop(self) -> None:
-        """레지스트리 하트비트 (인스턴스 지정 서버만)."""
-        while not self._heartbeat_stop.wait(timeout=2.0):
-            for _, svc in self._services.items():
-                reg_writer = svc[6]
-                if reg_writer is not None:
-                    # 마지막 등록 정보 재발행 (간단히 유지)
-                    pass  # 주기적 재발행은 선택. 현재는 최초 1회만.
+        """레지스트리 하트비트 (늦게 참여하는 reader가 수신할 수 있도록 재발행)."""
+        while not self._heartbeat_stop.wait(timeout=1.5):
+            for writer, entry in self._registry_entries:
+                writer.write(entry)
 
     def run(self) -> None:
         """이벤트 루프 실행 (블로킹). Ctrl+C로 종료."""
         if not self._services:
             return
+
+        hb_thread = None
+        if self._registry_entries:
+            hb_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
+            hb_thread.start()
 
         conditions = []
         readers = []
@@ -268,9 +292,9 @@ class RpcServer:
                                 pass
                             raise
         finally:
+            self._heartbeat_stop.set()
             for rc in conditions:
                 waitset.detach(rc)
-            self._heartbeat_stop.set()
             self._running = False
 
     def stop(self) -> None:

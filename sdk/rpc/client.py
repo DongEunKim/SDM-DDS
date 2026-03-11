@@ -21,6 +21,7 @@ from cyclonedds.core import (
 from cyclonedds.util import duration
 
 from sdm_dds_rpc.exceptions import RPCTimeoutError, RPCRemoteError
+from cyclonedds.qos import Qos, Policy
 
 try:
     from rpc import RemoteExceptionCode
@@ -198,24 +199,41 @@ class RpcClient:
         except ImportError:
             return []
 
+        _registry_qos = Qos(
+            Policy.Durability.Volatile,
+            Policy.History.KeepLast(depth=10),
+        )
         reg_topic = Topic(
             self._participant,
             "RPC/ServiceRegistry",
             ServiceRegistryEntry,
+            qos=_registry_qos.topic(),
         )
-        reg_reader = DataReader(self._participant, reg_topic)
+        reg_reader = DataReader(self._participant, reg_topic, qos=_registry_qos.datareader())
+        reg_reader.set_status_mask(DDSStatus.SubscriptionMatched)
 
-        time.sleep(timeout)
+        ws = WaitSet(self._participant)
+        ws.attach(reg_reader)
+        try:
+            ws.wait(duration(seconds=timeout))
+        finally:
+            ws.detach(reg_reader)
+
+        time.sleep(1.0)
 
         result: list[tuple[str, str]] = []
         seen: set[tuple[str, str]] = set()
-        for sample in reg_reader.take(N=100):
-            if hasattr(sample, "service_name") and hasattr(sample, "instance_name"):
-                svc = str(sample.service_name).strip()
-                inst = str(sample.instance_name).strip()
-                key = (svc, inst)
-                if key not in seen:
-                    seen.add(key)
-                    if service_name is None or svc == service_name:
-                        result.append((svc, inst))
+        for _ in range(3):
+            for sample in reg_reader.take(N=100):
+                if hasattr(sample, "service_name") and hasattr(sample, "instance_name"):
+                    svc = str(sample.service_name).strip()
+                    inst = str(sample.instance_name).strip()
+                    key = (svc, inst)
+                    if key not in seen:
+                        seen.add(key)
+                        if service_name is None or svc == service_name:
+                            result.append((svc, inst))
+            if result:
+                break
+            time.sleep(0.5)
         return result

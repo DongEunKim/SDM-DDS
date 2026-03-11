@@ -10,12 +10,14 @@ readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
     "cyclonedds",
-    "sdm-dds-idls",
 ]
 
 [project.optional-dependencies]
 dev = []
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["sdm_dds_rpc"]
+where = ["idls/build"]
+include = ["rpc", "sensor_msgs", "std_msgs", "services", "hello_msgs"]
+
+[tool.setuptools.package-dir]
+sdm_dds_rpc = "sdk/rpc"
