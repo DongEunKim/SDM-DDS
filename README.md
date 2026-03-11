@@ -27,7 +27,8 @@ SDM-DDS/
 │   └── setup.py       # pip install -e . 로 SDK 단독 설치
 ├── src/               # 예제
 │   ├── publisher.py   # HelloWorld 정적 타입 발행
-│   ├── subscriber.py  # XTypes 동적 타입 구독
+│   ├── subscriber.py  # XTypes 동적 타입 구독 (WaitSet 폴링)
+│   ├── subscriber_callback.py  # HelloWorld 콜백 구독 (Listener)
 │   ├── rpc_server.py  # Add RPC 서버 예제
 │   └── rpc_client.py  # Add RPC 클라이언트 예제
 ├── docs/              # 문서
@@ -63,7 +64,8 @@ source activate_env.sh
 
 ```bash
 source activate_env.sh
-python src/subscriber.py
+python src/subscriber.py           # 동적 타입 + WaitSet 폴링
+python src/subscriber_callback.py  # 정적 타입 + Listener 콜백
 ```
 
 **터미널 2** (Publisher 실행):
@@ -73,7 +75,8 @@ source activate_env.sh
 python src/publisher.py
 ```
 
-Subscriber는 XTypes 동적 타입 발견을 사용하므로, Publisher가 제공하는 토픽 타입을 런타임에 자동으로 획득합니다.
+- `subscriber.py`: XTypes 동적 타입 발견 + WaitSet 폴링
+- `subscriber_callback.py`: 정적 타입 + Listener 콜백 (`on_data_available`)
 
 ### 4. RPC 예제 실행
 
