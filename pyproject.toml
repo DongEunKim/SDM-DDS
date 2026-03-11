@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "sdm-dds-rpc"
 version = "0.1.0"
-description = "DDS 기반 RPC 요청-응답 패턴 SDK"
+description = "DDS 기반 RPC 및 PubSub SDK"
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
@@ -15,9 +15,10 @@ dependencies = [
 [project.optional-dependencies]
 dev = []
 
-[tool.setuptools.packages.find]
-where = ["idls/build"]
-include = ["rpc", "sensor_msgs", "std_msgs", "services", "hello_msgs"]
+[tool.setuptools]
+packages = ["rpc", "sensor_msgs", "std_msgs", "services", "hello_msgs", "sdm_dds_rpc", "sdm_dds_pubsub"]
 
 [tool.setuptools.package-dir]
+"" = "idls/build"
 sdm_dds_rpc = "sdk/rpc"
+sdm_dds_pubsub = "sdk/pubsub"
