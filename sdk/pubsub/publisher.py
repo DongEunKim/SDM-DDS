@@ -11,7 +11,7 @@ Publisher - DDS 토픽 발행용 간편 래퍼
 
 from __future__ import annotations
 
-from typing import Any, Type, TypeVar
+from typing import Any, Optional, Type, TypeVar
 
 from cyclonedds.domain import DomainParticipant
 from cyclonedds.topic import Topic
@@ -29,6 +29,9 @@ try:
 except ImportError:
     DDSException = Exception  # cyclonedds 미설치 시 fallback
 
+# QoS 타입 (cyclonedds.qos.Qos)
+QosType = Any
+
 
 T = TypeVar("T")
 
@@ -44,13 +47,17 @@ class Publisher:
         self,
         topic_name: str,
         datatype: Type[T],
+        participant: Optional[DomainParticipant] = None,
         domain_id: int = 0,
+        qos: Optional[QosType] = None,
     ) -> None:
         """
         Args:
             topic_name: DDS 토픽 이름
             datatype: 발행할 메시지 타입 (IDL로 생성된 클래스)
-            domain_id: DDS 도메인 ID (기본 0)
+            participant: 기존 DomainParticipant. None이면 domain_id로 생성
+            domain_id: participant가 None일 때 사용할 DDS 도메인 ID (기본 0)
+            qos: 커스텀 QoS (cyclonedds.qos.Qos). topic(), datawriter() 사용
         """
         # 인자 검증
         if not topic_name or not isinstance(topic_name, str):
@@ -59,30 +66,42 @@ class Publisher:
             )
         if datatype is None:
             raise ConfigurationError("datatype은 필수입니다.")
-        if domain_id < 0:
+        if participant is None and domain_id < 0:
             raise ConfigurationError(
                 f"domain_id는 0 이상이어야 합니다. (현재: {domain_id})"
             )
 
         self._topic_name = topic_name
         self._datatype = datatype
+        self._owns_participant = participant is None
 
         try:
-            self._participant = DomainParticipant(domain_id=domain_id)
+            if participant is not None:
+                self._participant = participant
+            else:
+                self._participant = DomainParticipant(domain_id=domain_id)
         except DDSException as e:
             raise ConnectionError(
                 f"DDS 도메인 참가자 생성 실패 (domain_id={domain_id}): {e}"
             ) from e
 
+        topic_qos = qos.topic() if qos is not None and hasattr(qos, "topic") else None
         try:
-            self._topic = Topic(self._participant, topic_name, datatype)
+            self._topic = Topic(
+                self._participant, topic_name, datatype, qos=topic_qos
+            )
         except DDSException as e:
             raise ConnectionError(
                 f"토픽 생성 실패 ('{topic_name}'): {e}"
             ) from e
 
+        writer_qos = (
+            qos.datawriter() if qos is not None and hasattr(qos, "datawriter") else None
+        )
         try:
-            self._writer = DataWriter(self._participant, self._topic)
+            self._writer = DataWriter(
+                self._participant, self._topic, qos=writer_qos
+            )
         except DDSException as e:
             raise ConnectionError(
                 f"DataWriter 생성 실패 ('{topic_name}'): {e}"

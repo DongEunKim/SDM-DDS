@@ -39,6 +39,9 @@ try:
 except ImportError:
     DDSException = Exception  # cyclonedds 미설치 시 fallback
 
+# QoS 타입 (cyclonedds.qos.Qos)
+QosType = Any
+
 
 T = TypeVar("T")
 
@@ -57,8 +60,10 @@ class Subscriber:
         datatype: Optional[Type[T]] = None,
         on_message: Optional[Callable[[T], None]] = None,
         on_error: Optional[Callable[[Exception, Any], None]] = None,
+        participant: Optional[DomainParticipant] = None,
         domain_id: int = 0,
         discovery_timeout: float = 10.0,
+        qos: Optional[QosType] = None,
     ) -> None:
         """
         Args:
@@ -66,8 +71,10 @@ class Subscriber:
             datatype: 메시지 타입. None이면 동적 discovery
             on_message: 콜백 함수 (인자: 수신 메시지). None이면 read() 사용
             on_error: on_message 내부 예외 시 호출 (exc, msg). None이면 예외 무시
-            domain_id: DDS 도메인 ID (기본 0)
+            participant: 기존 DomainParticipant. None이면 domain_id로 생성
+            domain_id: participant가 None일 때 사용할 DDS 도메인 ID (기본 0)
             discovery_timeout: datatype=None일 때 discovery 대기 시간(초)
+            qos: 커스텀 QoS (cyclonedds.qos.Qos). topic(), datareader() 사용
         """
         # 인자 검증
         if not topic_name or not isinstance(topic_name, str):
@@ -76,7 +83,7 @@ class Subscriber:
             raise ConfigurationError(
                 f"discovery_timeout은 양수여야 합니다. (현재: {discovery_timeout})"
             )
-        if domain_id < 0:
+        if participant is None and domain_id < 0:
             raise ConfigurationError(
                 f"domain_id는 0 이상이어야 합니다. (현재: {domain_id})"
             )
@@ -85,7 +92,10 @@ class Subscriber:
         self._on_error = on_error
 
         try:
-            self._participant = DomainParticipant(domain_id=domain_id)
+            if participant is not None:
+                self._participant = participant
+            else:
+                self._participant = DomainParticipant(domain_id=domain_id)
         except DDSException as e:
             raise ConnectionError(
                 f"DDS 도메인 참가자 생성 실패 (domain_id={domain_id}): {e}"
@@ -105,12 +115,21 @@ class Subscriber:
             if resolved_type is None:
                 raise DiscoveryTimeoutError(topic_name, discovery_timeout)
 
+        topic_qos = qos.topic() if qos is not None and hasattr(qos, "topic") else None
         try:
-            self._topic = Topic(self._participant, topic_name, resolved_type)
+            self._topic = Topic(
+                self._participant, topic_name, resolved_type, qos=topic_qos
+            )
         except DDSException as e:
             raise ConnectionError(
                 f"토픽 생성 실패 ('{topic_name}'): {e}"
             ) from e
+
+        reader_qos = (
+            qos.datareader()
+            if qos is not None and hasattr(qos, "datareader")
+            else None
+        )
 
         if on_message is not None:
 
@@ -129,7 +148,8 @@ class Subscriber:
             listener = Listener(on_data_available=_on_data_available)
             try:
                 self._reader = DataReader(
-                    self._participant, self._topic, listener=listener
+                    self._participant, self._topic,
+                    qos=reader_qos, listener=listener
                 )
             except DDSException as e:
                 raise ConnectionError(
@@ -140,7 +160,9 @@ class Subscriber:
             self._waitset = None
         else:
             try:
-                self._reader = DataReader(self._participant, self._topic)
+                self._reader = DataReader(
+                    self._participant, self._topic, qos=reader_qos
+                )
             except DDSException as e:
                 raise ConnectionError(
                     f"DataReader 생성 실패 ('{topic_name}'): {e}"

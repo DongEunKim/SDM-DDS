@@ -35,7 +35,11 @@ with Publisher("HelloWorld", HelloWorld) as pub:
 |------|------|--------|------|
 | topic_name | str | - | DDS 토픽 이름 |
 | datatype | Type | - | 발행할 메시지 타입 |
-| domain_id | int | 0 | DDS 도메인 ID |
+| participant | DomainParticipant \| None | None | 기존 participant. None이면 domain_id로 생성 |
+| domain_id | int | 0 | participant=None일 때 사용할 DDS 도메인 ID |
+| qos | Qos \| None | None | 커스텀 QoS. topic(), datawriter() 사용 |
+
+- `participant`를 넘기면 `domain_id`는 무시되고, close 시 participant는 정리하지 않음.
 
 ---
 
@@ -101,8 +105,12 @@ except DiscoveryTimeoutError as e:
 | datatype | Type \| None | None | 메시지 타입 (None이면 동적 discovery) |
 | on_message | Callable \| None | None | 콜백 (None이면 read() 사용) |
 | on_error | Callable \| None | None | on_message 내부 예외 시 호출 (exc, msg) |
-| domain_id | int | 0 | DDS 도메인 ID |
+| participant | DomainParticipant \| None | None | 기존 participant. None이면 domain_id로 생성 |
+| domain_id | int | 0 | participant=None일 때 사용할 DDS 도메인 ID |
 | discovery_timeout | float | 10.0 | 동적 discovery 대기 시간(초) |
+| qos | Qos \| None | None | 커스텀 QoS. topic(), datareader() 사용 |
+
+- `participant`를 넘기면 `domain_id`는 무시되고, close 시 participant는 정리하지 않음.
 
 ### read()
 

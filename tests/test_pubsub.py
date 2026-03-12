@@ -228,6 +228,34 @@ def test_on_error_callback():
     print("  통과: on_error 호출 확인")
 
 
+def test_shared_participant():
+    """동일 participant로 Publisher와 Subscriber 공유."""
+    print("\n[테스트 9] 공유 participant (Publisher + Subscriber)")
+
+    from cyclonedds.domain import DomainParticipant
+
+    participant = DomainParticipant(domain_id=0)
+    pub = Publisher("HelloWorld", HelloWorld, participant=participant)
+    sub = Subscriber("HelloWorld", datatype=HelloWorld, participant=participant)
+
+    pub.write(_make_hello("shared", 99))
+    received = []
+    for msg in sub.read(timeout_sec=3):
+        received.append(msg)
+        if len(received) >= 1:
+            break
+
+    assert len(received) >= 1
+    assert received[0].msg == "shared"
+    assert received[0].count == 99
+
+    pub.close()
+    sub.close()
+    # participant는 외부에서 생성했으므로 close 시 정리 대상 아님
+
+    print("  통과: 공유 participant로 발행-구독 성공")
+
+
 def main():
     print("=== PubSub SDK 테스트 ===")
     test_publisher_configuration_error()
@@ -238,6 +266,7 @@ def main():
     test_with_statement()
     test_e2e_publish_subscribe()
     test_on_error_callback()
+    test_shared_participant()
     print("\n=== 모든 테스트 완료 ===")
 
 
