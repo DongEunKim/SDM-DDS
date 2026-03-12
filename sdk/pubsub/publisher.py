@@ -73,7 +73,6 @@ class Publisher:
 
         self._topic_name = topic_name
         self._datatype = datatype
-        self._owns_participant = participant is None
 
         try:
             if participant is not None:

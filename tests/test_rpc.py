@@ -13,7 +13,13 @@ from pathlib import Path
 # 프로젝트 루트를 path에 추가
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sdm_dds_rpc import RpcClient, RpcServer, RPCDuplicateInstanceError
+from sdm_dds_rpc import (
+    RpcClient,
+    RpcServer,
+    ConfigurationError,
+    RPCClosedError,
+    RPCDuplicateInstanceError,
+)
 from rpc import RequestHeader, ReplyHeader, RemoteExceptionCode
 from services import Add, Calculate
 
@@ -195,6 +201,84 @@ def test_calculate_service():
     print("  통과: add, mul, sub")
 
 
+def test_configuration_error():
+    """domain_id < 0 시 ConfigurationError."""
+    print("\n[테스트 7] ConfigurationError (domain_id < 0)")
+    try:
+        RpcClient(domain_id=-1)
+        print("  실패: ConfigurationError 예상")
+        sys.exit(1)
+    except ConfigurationError:
+        pass
+    try:
+        RpcServer(domain_id=-1)
+        print("  실패: ConfigurationError 예상")
+        sys.exit(1)
+    except ConfigurationError:
+        pass
+    print("  통과: ConfigurationError 발생")
+
+
+def test_closed_error():
+    """close() 후 call() 시 RPCClosedError."""
+    print("\n[테스트 8] RPCClosedError (close 후 호출)")
+    client = RpcClient(domain_id=0)
+    client.close()
+    req = Add.Request(
+        header=RequestHeader(request_id="", instance_name=""),
+        data=Add.In(a=1, b=2),
+    )
+    try:
+        client.call("Add", req, Add.Reply, timeout=1.0)
+        print("  실패: RPCClosedError 예상")
+        sys.exit(1)
+    except RPCClosedError:
+        pass
+    try:
+        client.list_servers()
+        print("  실패: RPCClosedError 예상")
+        sys.exit(1)
+    except RPCClosedError:
+        pass
+    print("  통과: RPCClosedError 발생")
+
+
+def test_with_statement():
+    """with 구문."""
+    print("\n[테스트 9] with 구문")
+    with RpcClient(domain_id=0) as client:
+        pass  # close() 자동 호출
+    with RpcServer(domain_id=0) as server:
+        pass  # close() 자동 호출
+    print("  통과: with RpcClient, with RpcServer")
+
+
+def test_shared_participant():
+    """공유 participant로 RPC 동작."""
+    print("\n[테스트 10] 공유 participant")
+    from cyclonedds.domain import DomainParticipant
+
+    dp = DomainParticipant(domain_id=0)
+    server = RpcServer(participant=dp)
+    server.register_service("Add", Add.Request, Add.Reply, handle_add)
+
+    t = threading.Thread(target=server.run, daemon=True)
+    t.start()
+    time.sleep(4)
+
+    client = RpcClient(participant=dp)
+    req = Add.Request(
+        header=RequestHeader(request_id="", instance_name=""),
+        data=Add.In(a=3, b=5),
+    )
+    r = client.call("Add", req, Add.Reply, timeout=5.0)
+    assert r.data.sum == 8
+    server.stop()
+    client.close()
+    server.close()
+    print("  통과: 공유 participant RPC 호출")
+
+
 def main():
     print("=== RPC SDK 테스트 ===")
     test_basic_call()
@@ -203,6 +287,10 @@ def main():
     test_duplicate_instance()
     test_timeout()
     test_calculate_service()
+    test_configuration_error()
+    test_closed_error()
+    test_with_statement()
+    test_shared_participant()
     print("\n=== 모든 테스트 완료 ===")
 
 

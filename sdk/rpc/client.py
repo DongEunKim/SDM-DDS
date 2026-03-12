@@ -4,7 +4,7 @@ RPC 클라이언트 - 동기 요청-응답 호출
 
 import time
 import uuid
-from typing import Any, Type, TypeVar
+from typing import Any, Optional, Type, TypeVar
 
 from cyclonedds.domain import DomainParticipant
 from cyclonedds.topic import Topic
@@ -20,7 +20,12 @@ from cyclonedds.core import (
 )
 from cyclonedds.util import duration
 
-from sdm_dds_rpc.exceptions import RPCTimeoutError, RPCRemoteError
+from sdm_dds_rpc.exceptions import (
+    ConfigurationError,
+    RPCClosedError,
+    RPCTimeoutError,
+    RPCRemoteError,
+)
 from cyclonedds.qos import Qos, Policy
 
 try:
@@ -28,6 +33,9 @@ try:
     REMOTE_EX_OK = RemoteExceptionCode.REMOTE_EX_OK
 except ImportError:
     REMOTE_EX_OK = 0
+
+# QoS 타입 (cyclonedds.qos.Qos)
+QosType = Any
 
 T = TypeVar("T")
 
@@ -66,15 +74,45 @@ class RpcClient:
     사용자는 request_id, 토픽명 등을 직접 다룰 필요가 없습니다.
     """
 
-    def __init__(self, domain_id: int = 0):
+    def __init__(
+        self,
+        participant: Optional[DomainParticipant] = None,
+        domain_id: int = 0,
+        qos: Optional[QosType] = None,
+    ) -> None:
         """
         Args:
-            domain_id: DDS 도메인 ID
+            participant: 기존 DomainParticipant. None이면 domain_id로 생성.
+            domain_id: participant가 None일 때 사용할 DDS 도메인 ID (기본 0).
+            qos: Request/Reply 토픽용 QoS (topic(), datawriter(), datareader() 사용).
         """
-        self._domain_id = domain_id
-        self._participant = DomainParticipant(domain_id=domain_id)
+        if participant is None and domain_id < 0:
+            raise ConfigurationError(
+                f"domain_id는 0 이상이어야 합니다. (현재: {domain_id})"
+            )
+        if participant is not None:
+            self._participant = participant
+        else:
+            self._participant = DomainParticipant(domain_id=domain_id)
+        self._qos = qos
         self._request_writers: dict[str, tuple[Topic, DataWriter]] = {}
         self._reply_readers: dict[str, tuple[Topic, DataReader]] = {}
+        self._closed = False
+
+    def close(self) -> None:
+        """리소스를 정리합니다. close() 후 call()/list_servers() 호출 시 RPCClosedError."""
+        if self._closed:
+            return
+        self._closed = True
+        self._request_writers.clear()
+        self._reply_readers.clear()
+        self._participant = None  # type: ignore
+
+    def __enter__(self) -> "RpcClient":
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close()
 
     def call(
         self,
@@ -98,9 +136,12 @@ class RpcClient:
             Response 인스턴스 (response.header.server_instance로 응답 서버 확인 가능)
 
         Raises:
+            RPCClosedError: close() 호출 후
             RPCTimeoutError: timeout 초과
             RPCRemoteError: 서버가 remote_ex != OK 로 응답
         """
+        if self._closed:
+            raise RPCClosedError("RpcClient가 이미 close()되었습니다.")
         _ensure_header(request, instance)
         request_id = request.header.request_id
 
@@ -109,19 +150,37 @@ class RpcClient:
 
         request_type = type(request)
 
+        topic_qos = (
+            self._qos.topic() if self._qos is not None and hasattr(self._qos, "topic") else None
+        )
+        writer_qos = (
+            self._qos.datawriter()
+            if self._qos is not None and hasattr(self._qos, "datawriter")
+            else None
+        )
+        reader_qos = (
+            self._qos.datareader()
+            if self._qos is not None and hasattr(self._qos, "datareader")
+            else None
+        )
+
         if service_name not in self._request_writers:
             req_topic = Topic(
-                self._participant, req_topic_name, request_type
+                self._participant, req_topic_name, request_type, qos=topic_qos
             )
-            req_writer = DataWriter(self._participant, req_topic)
+            req_writer = DataWriter(
+                self._participant, req_topic, qos=writer_qos
+            )
             req_writer.set_status_mask(DDSStatus.PublicationMatched)
             self._request_writers[service_name] = (req_topic, req_writer)
 
         if service_name not in self._reply_readers:
             rep_topic = Topic(
-                self._participant, rep_topic_name, response_type
+                self._participant, rep_topic_name, response_type, qos=topic_qos
             )
-            rep_reader = DataReader(self._participant, rep_topic)
+            rep_reader = DataReader(
+                self._participant, rep_topic, qos=reader_qos
+            )
             self._reply_readers[service_name] = (rep_topic, rep_reader)
 
         _, req_writer = self._request_writers[service_name]
@@ -194,6 +253,8 @@ class RpcClient:
         Returns:
             [(service_name, instance_name), ...] 목록
         """
+        if self._closed:
+            raise RPCClosedError("RpcClient가 이미 close()되었습니다.")
         try:
             from rpc import ServiceRegistryEntry
         except ImportError:

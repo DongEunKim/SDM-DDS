@@ -48,6 +48,8 @@ def main() -> None:
         server.run()
     except KeyboardInterrupt:
         server.stop()
+    finally:
+        server.close()
         print("\n[RPC 서버] 종료")
 
 

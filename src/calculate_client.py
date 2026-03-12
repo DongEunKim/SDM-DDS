@@ -28,27 +28,26 @@ def main() -> None:
         print("오류: a, b는 정수여야 합니다.")
         sys.exit(1)
 
-    client = RpcClient(domain_id=0)
+    with RpcClient(domain_id=0) as client:
+        servers = client.list_servers(service_name="Calculate", timeout=2.0)
+        if servers:
+            print(f"[Calculate 클라이언트] 등록된 서버: {servers}")
+        else:
+            print("[Calculate 클라이언트] 등록된 서버 없음 (서버 시작 대기 중)")
 
-    servers = client.list_servers(service_name="Calculate", timeout=2.0)
-    if servers:
-        print(f"[Calculate 클라이언트] 등록된 서버: {servers}")
-    else:
-        print("[Calculate 클라이언트] 등록된 서버 없음 (서버 시작 대기 중)")
+        req = Calculate.Request(
+            header=RequestHeader(request_id="", instance_name=""),
+            data=Calculate.In(op=op, a=a, b=b),
+        )
 
-    req = Calculate.Request(
-        header=RequestHeader(request_id="", instance_name=""),
-        data=Calculate.In(op=op, a=a, b=b),
-    )
-
-    print(f"[Calculate 클라이언트] 요청: {op} {a} {b}")
-    try:
-        rep = client.call("Calculate", req, Calculate.Reply, timeout=5.0)
-        print(f"[Calculate 클라이언트] 응답: {rep.data.message}")
-        print(f"             결과 = {rep.data.result}")
-    except RPCTimeoutError as e:
-        print(f"[Calculate 클라이언트] 타임아웃: {e}")
-        print("             서버(calculate_server.py)가 실행 중인지 확인하세요.")
+        print(f"[Calculate 클라이언트] 요청: {op} {a} {b}")
+        try:
+            rep = client.call("Calculate", req, Calculate.Reply, timeout=5.0)
+            print(f"[Calculate 클라이언트] 응답: {rep.data.message}")
+            print(f"             결과 = {rep.data.result}")
+        except RPCTimeoutError as e:
+            print(f"[Calculate 클라이언트] 타임아웃: {e}")
+            print("             서버(calculate_server.py)가 실행 중인지 확인하세요.")
 
 
 if __name__ == "__main__":

@@ -7,6 +7,8 @@ sdm_dds_rpc - DDS 기반 RPC 요청-응답 패턴 SDK
 from sdm_dds_rpc.client import RpcClient
 from sdm_dds_rpc.server import RpcServer
 from sdm_dds_rpc.exceptions import (
+    ConfigurationError,
+    RPCClosedError,
     RPCTimeoutError,
     RPCConnectionError,
     RPCRemoteError,
@@ -16,6 +18,8 @@ from sdm_dds_rpc.exceptions import (
 __all__ = [
     "RpcClient",
     "RpcServer",
+    "ConfigurationError",
+    "RPCClosedError",
     "RPCTimeoutError",
     "RPCConnectionError",
     "RPCRemoteError",

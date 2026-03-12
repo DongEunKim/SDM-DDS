@@ -9,6 +9,18 @@ class RPCError(Exception):
     pass
 
 
+class ConfigurationError(RPCError):
+    """설정 또는 인자 오류."""
+
+    pass
+
+
+class RPCClosedError(RPCError):
+    """이미 close()된 엔티티에 대한 작업 시도."""
+
+    pass
+
+
 class RPCTimeoutError(RPCError):
     """지정된 시간 내에 Reply를 수신하지 못한 경우."""
 

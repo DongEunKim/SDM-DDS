@@ -21,32 +21,31 @@ from services import Add
 
 def main() -> None:
     """RPC 클라이언트 메인."""
-    client = RpcClient(domain_id=0)
-
     instance = sys.argv[1] if len(sys.argv) > 1 else None
 
-    servers = client.list_servers(service_name="Add", timeout=2.0)
-    if servers:
-        print(f"[RPC 클라이언트] 등록된 Add 서버: {servers}")
-    else:
-        print("[RPC 클라이언트] 등록된 Add 서버 없음 (서버 시작 대기 중)")
+    with RpcClient(domain_id=0) as client:
+        servers = client.list_servers(service_name="Add", timeout=2.0)
+        if servers:
+            print(f"[RPC 클라이언트] 등록된 Add 서버: {servers}")
+        else:
+            print("[RPC 클라이언트] 등록된 Add 서버 없음 (서버 시작 대기 중)")
 
-    request = Add.Request(
-        header=RequestHeader(request_id="", instance_name=""),
-        data=Add.In(a=10, b=20),
-    )
-
-    target = f" (대상: {instance})" if instance else ""
-    print(f"[RPC 클라이언트] Add 서비스 호출: 10 + 20{target}")
-    try:
-        response = client.call(
-            "Add", request, Add.Reply, timeout=5.0, instance=instance
+        request = Add.Request(
+            header=RequestHeader(request_id="", instance_name=""),
+            data=Add.In(a=10, b=20),
         )
-        svc_inst = str(getattr(response.header, "server_instance", "") or "").strip()
-        print(f"[RPC 클라이언트] 응답: sum = {response.data.sum}  (응답 서버: {svc_inst or '미지정'})")
-    except RPCTimeoutError as e:
-        print(f"[RPC 클라이언트] 타임아웃: {e}")
-        print("             서버(rpc_server.py)가 실행 중인지 확인하세요.")
+
+        target = f" (대상: {instance})" if instance else ""
+        print(f"[RPC 클라이언트] Add 서비스 호출: 10 + 20{target}")
+        try:
+            response = client.call(
+                "Add", request, Add.Reply, timeout=5.0, instance=instance
+            )
+            svc_inst = str(getattr(response.header, "server_instance", "") or "").strip()
+            print(f"[RPC 클라이언트] 응답: sum = {response.data.sum}  (응답 서버: {svc_inst or '미지정'})")
+        except RPCTimeoutError as e:
+            print(f"[RPC 클라이언트] 타임아웃: {e}")
+            print("             서버(rpc_server.py)가 실행 중인지 확인하세요.")
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable
-from typing import Any, Type
+from typing import Any, Optional, Type
 
 from cyclonedds.domain import DomainParticipant
 from cyclonedds.topic import Topic
@@ -23,7 +23,12 @@ from cyclonedds.core import (
 )
 from cyclonedds.util import duration
 
-from sdm_dds_rpc.exceptions import RPCRemoteError, RPCDuplicateInstanceError
+from sdm_dds_rpc.exceptions import (
+    ConfigurationError,
+    RPCClosedError,
+    RPCRemoteError,
+    RPCDuplicateInstanceError,
+)
 
 try:
     from rpc import RemoteExceptionCode, ServiceRegistryEntry
@@ -37,6 +42,9 @@ except ImportError:
         service_name: str = ""
         instance_name: str = ""
         server_guid: str = ""
+
+# QoS 타입 (cyclonedds.qos.Qos)
+QosType = Any
 
 REGISTRY_TOPIC = "RPC/ServiceRegistry"
 REGISTRY_CHECK_WAIT_SEC = 3.0
@@ -120,13 +128,27 @@ class RpcServer:
     중복 인스턴스명 등록 시 RPCDuplicateInstanceError 발생.
     """
 
-    def __init__(self, domain_id: int = 0):
+    def __init__(
+        self,
+        participant: Optional[DomainParticipant] = None,
+        domain_id: int = 0,
+        qos: Optional[QosType] = None,
+    ) -> None:
         """
         Args:
-            domain_id: DDS 도메인 ID
+            participant: 기존 DomainParticipant. None이면 domain_id로 생성.
+            domain_id: participant가 None일 때 사용할 DDS 도메인 ID (기본 0).
+            qos: Request/Reply 토픽용 QoS (topic(), datareader(), datawriter() 사용).
         """
-        self._domain_id = domain_id
-        self._participant = DomainParticipant(domain_id=domain_id)
+        if participant is None and domain_id < 0:
+            raise ConfigurationError(
+                f"domain_id는 0 이상이어야 합니다. (현재: {domain_id})"
+            )
+        if participant is not None:
+            self._participant = participant
+        else:
+            self._participant = DomainParticipant(domain_id=domain_id)
+        self._qos = qos
         self._services: dict[
             str,
             tuple[
@@ -142,6 +164,23 @@ class RpcServer:
         self._running = False
         self._registry_entries: list[tuple[DataWriter, ServiceRegistryEntry]] = []
         self._heartbeat_stop = threading.Event()
+        self._closed = False
+
+    def close(self) -> None:
+        """리소스를 정리합니다. run() 중이면 stop() 후 정리."""
+        if self._closed:
+            return
+        self._closed = True
+        self.stop()
+        self._services.clear()
+        self._registry_entries.clear()
+        self._participant = None  # type: ignore
+
+    def __enter__(self) -> "RpcServer":
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close()
 
     def register_service(
         self,
@@ -163,8 +202,11 @@ class RpcServer:
                 동일 (name, instance_name)이 이미 등록되어 있으면 RPCDuplicateInstanceError.
 
         Raises:
+            RPCClosedError: close() 호출 후
             RPCDuplicateInstanceError: 중복 인스턴스명으로 등록 시도 시
         """
+        if self._closed:
+            raise RPCClosedError("RpcServer가 이미 close()되었습니다.")
         inst = instance_name or ""
         reg_writer: DataWriter | None = None
 
@@ -188,11 +230,34 @@ class RpcServer:
         req_topic_name = f"{name}/Request"
         rep_topic_name = f"{name}/Reply"
 
-        req_topic = Topic(self._participant, req_topic_name, request_type)
-        rep_topic = Topic(self._participant, rep_topic_name, response_type)
+        topic_qos = (
+            self._qos.topic()
+            if self._qos is not None and hasattr(self._qos, "topic")
+            else None
+        )
+        reader_qos = (
+            self._qos.datareader()
+            if self._qos is not None and hasattr(self._qos, "datareader")
+            else None
+        )
+        writer_qos = (
+            self._qos.datawriter()
+            if self._qos is not None and hasattr(self._qos, "datawriter")
+            else None
+        )
 
-        reader = DataReader(self._participant, req_topic)
-        writer = DataWriter(self._participant, rep_topic)
+        req_topic = Topic(
+            self._participant, req_topic_name, request_type, qos=topic_qos
+        )
+        rep_topic = Topic(
+            self._participant, rep_topic_name, response_type, qos=topic_qos
+        )
+        reader = DataReader(
+            self._participant, req_topic, qos=reader_qos
+        )
+        writer = DataWriter(
+            self._participant, rep_topic, qos=writer_qos
+        )
 
         self._services[name] = (
             request_type,
@@ -212,6 +277,8 @@ class RpcServer:
 
     def run(self) -> None:
         """이벤트 루프 실행 (블로킹). Ctrl+C로 종료."""
+        if self._closed:
+            raise RPCClosedError("RpcServer가 이미 close()되었습니다.")
         if not self._services:
             return
 

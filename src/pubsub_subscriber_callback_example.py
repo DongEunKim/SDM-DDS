@@ -39,8 +39,9 @@ def main() -> None:
 
     print("[PubSub SDK] HelloWorld 구독 중 (콜백). Ctrl+C로 종료")
     try:
-        while True:
-            time.sleep(1)
+        with subscriber:
+            while True:
+                time.sleep(1)
     except KeyboardInterrupt:
         print("\n[PubSub SDK] 종료")
 
